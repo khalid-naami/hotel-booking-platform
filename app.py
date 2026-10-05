@@ -1,0 +1,350 @@
+"""Institutional Global Hotel Search, Price Intelligence & Booking Platform (Booking.com style)."""
+
+import datetime
+import pandas as pd
+import numpy as np
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+
+from src.hotels_database import HOTELS_DATABASE, HotelsManager
+from src.currency_engine import CurrencyEngine, EXCHANGE_RATES
+from src.booking_engine import BookingEngine
+from src.visualizer import (
+    create_hotels_map,
+    create_guest_ratings_radar,
+    create_seasonal_price_chart
+)
+
+# Streamlit Page Config
+st.set_page_config(
+    page_title="Global Hotels & Luxury Resorts Booking Platform",
+    page_icon="🏨",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom Luxury Glassmorphism CSS Styling
+st.markdown("""
+<style>
+    .main-title {
+        font-size: 2.2rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #f59e0b, #38bdf8, #ec4899);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.2rem;
+    }
+    .sub-title {
+        color: #94a3b8;
+        font-size: 1.05rem;
+        margin-bottom: 0.8rem;
+    }
+    .live-badge {
+        display: inline-flex;
+        align-items: center;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        color: #34d399;
+        font-weight: 600;
+        margin-bottom: 1.2rem;
+    }
+    .hotel-card {
+        background: rgba(30, 41, 59, 0.75);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        border-radius: 12px;
+        padding: 1.4rem;
+        margin-bottom: 1.2rem;
+        transition: all 0.3s ease;
+    }
+    .hotel-card:hover {
+        border-color: #f59e0b;
+        box-shadow: 0 8px 16px -2px rgba(245, 158, 11, 0.15);
+    }
+    .rating-badge {
+        background: #0284c7;
+        color: white;
+        padding: 0.3rem 0.6rem;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 1.1rem;
+        display: inline-block;
+    }
+    .price-tag {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #f59e0b;
+    }
+    .discount-badge {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+        border: 1px solid #ef4444;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+    .voucher-card {
+        background: rgba(15, 23, 42, 0.95);
+        border: 2px solid #10b981;
+        border-radius: 12px;
+        padding: 1.8rem;
+        margin-top: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Top Bar / Currency & Destination Selector
+st.markdown('<div class="main-title">🏨 Global Hotel Booking, Luxury Stays & Price Intelligence</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Instant Room Reservations | Multi-Currency Best Deals | Interactive Neighborhood Maps | Verified Guest Analytics</div>', unsafe_allow_html=True)
+
+# Sidebar Filters
+st.sidebar.markdown("## 🔍 Refine Your Search")
+search_keyword = st.sidebar.text_input("Filter by hotel name or keyword:", value="", placeholder="e.g. Mamounia, Burj, Plaza...")
+
+# 10s Live Auto-Refresh
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🔄 Live Telemetry & Auto-Refresh")
+auto_refresh_enabled = st.sidebar.toggle("10s Auto-Refresh (Live Sync)", value=True)
+refresh_counter = 0
+if auto_refresh_enabled:
+    refresh_counter = st_autorefresh(interval=10000, limit=None, key="hotel_auto_refresh_10s")
+
+max_price_slider = st.sidebar.slider(
+    "Max Price per Night (USD):",
+    min_value=200,
+    max_value=3000,
+    value=2500,
+    step=100
+)
+
+min_stars_choice = st.sidebar.selectbox("Minimum Star Rating:", [5, 4, 3], index=0)
+
+property_types = ["All Types", "Luxury Resort", "Boutique Riad", "Historic Palace", "Overwater Villa"]
+chosen_type = st.sidebar.selectbox("Property Type:", property_types, index=0)
+
+amenity_filter = st.sidebar.selectbox(
+    "Key Amenity Required:",
+    ["All Amenities", "Pool 🏊", "Spa & Wellness 🧖", "Ocean / Landmark View 🌅", "Free Breakfast 🥐", "Airport Shuttle 🚐"],
+    index=0
+)
+
+# Live Status Badge
+now_utc_str = datetime.datetime.utcnow().strftime("%H:%M:%S UTC")
+if auto_refresh_enabled:
+    st.markdown(f'<div class="live-badge">🟢 LIVE TELEMETRY ACTIVE &bull; Auto-Refreshing every 10s &bull; Last Synced: {now_utc_str} &bull; Cycle #{refresh_counter}</div>', unsafe_allow_html=True)
+else:
+    st.markdown(f'<div class="live-badge" style="background:rgba(148,163,184,0.1); border-color:rgba(148,163,184,0.3); color:#94a3b8;">⏸️ LIVE SYNC PAUSED &bull; Last Synced: {now_utc_str}</div>', unsafe_allow_html=True)
+
+# Search Bar Row
+sc1, sc2, sc3, sc4, sc5 = st.columns([1.5, 1.2, 1.2, 1.0, 1.0])
+with sc1:
+    all_destinations = HotelsManager.get_destinations()
+    chosen_destination = st.selectbox("📍 Destination:", all_destinations, index=0)
+
+with sc2:
+    today = datetime.date.today()
+    checkin_date = st.date_input("📅 Check-in Date:", value=today + datetime.timedelta(days=7), min_value=today)
+
+with sc3:
+    checkout_date = st.date_input("📅 Check-out Date:", value=today + datetime.timedelta(days=11), min_value=checkin_date + datetime.timedelta(days=1))
+
+with sc4:
+    num_guests = st.selectbox("👥 Guests:", [1, 2, 3, 4, 6], index=1)
+
+with sc5:
+    currency_choice = st.selectbox("💱 Currency:", CurrencyEngine.get_supported_currencies(), index=0)
+
+num_nights = max(1, (checkout_date - checkin_date).days)
+
+# Query Filtered Hotels
+filtered_hotels = HotelsManager.filter_hotels(
+    destination=chosen_destination,
+    max_price_usd=max_price_slider,
+    min_stars=min_stars_choice,
+    property_type=chosen_type,
+    required_amenity=amenity_filter if amenity_filter != "All Amenities" else None,
+    search_query=search_keyword
+)
+
+st.markdown(f"**Found {len(filtered_hotels)} luxury properties matching your criteria** for **{num_nights} nights** ({checkin_date} to {checkout_date}).")
+st.markdown("<br>", unsafe_allow_html=True)
+
+# Main Navigation Tabs
+tabs = st.tabs([
+    "🏨 Hotel Discovery & Listings",
+    "🗺️ Interactive Map & Neighborhoods",
+    "🛏️ Room Selection & Instant Booking Voucher",
+    "📊 Price Intelligence & Seasonal Deals",
+    "⭐ Guest Reviews & Rating Analytics"
+])
+
+# ----------------- TAB 1: Hotel Listings -----------------
+with tabs[0]:
+    if not filtered_hotels:
+        st.warning("No hotels matched your exact filters. Try relaxing the star rating or price limit.")
+    else:
+        for hotel in filtered_hotels:
+            h_price_formatted = CurrencyEngine.format_price(hotel["base_price_usd"], currency_choice)
+            h_orig_formatted = CurrencyEngine.format_price(hotel["original_price_usd"], currency_choice)
+            total_stay_price = CurrencyEngine.format_price(hotel["base_price_usd"] * num_nights, currency_choice)
+
+            st.markdown(f"""
+            <div class="hotel-card">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <h3 style="margin:0 0 0.2rem 0; color:#f8fafc;">🏨 {hotel['name']} {'⭐' * hotel['stars']}</h3>
+                        <p style="color:#94a3b8; margin:0 0 0.5rem 0;">📍 {hotel['address']} • <b>{hotel['distance_center_km']} km</b> from city center • <b>{hotel['distance_airport_km']} km</b> from airport</p>
+                        <div style="margin-bottom:0.6rem;">
+                            <span class="rating-badge">{hotel['rating']}</span>
+                            <span style="font-weight:700; color:#38bdf8; margin-left:0.5rem;">{hotel['rating_badge']}</span>
+                            <span style="color:#94a3b8; font-size:0.85rem;">({hotel['review_count']:,} verified guest reviews)</span>
+                        </div>
+                        <div style="color:#cbd5e1; font-size:0.85rem;">
+                            {' • '.join(hotel['amenities'][:5])}
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <span class="discount-badge">-{hotel['discount_pct']}% Deal</span>
+                        <div style="color:#94a3b8; text-decoration:line-through; font-size:0.9rem; margin-top:0.3rem;">{h_orig_formatted}</div>
+                        <div class="price-tag">{h_price_formatted}</div>
+                        <div style="color:#94a3b8; font-size:0.8rem;">per night • {num_nights} nights total: <b>{total_stay_price}</b></div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+# ----------------- TAB 2: Interactive Map -----------------
+with tabs[1]:
+    st.markdown("### 🗺️ Interactive Hotel Neighborhood & Location Radar")
+    fig_map = create_hotels_map(filtered_hotels, currency_choice)
+    st.plotly_chart(fig_map, use_container_width=True)
+
+    with st.expander("📋 View Hotel Locations & Distances Table"):
+        df_hotels_summary = pd.DataFrame([{
+            "Hotel Name": h["name"],
+            "City": h["city"],
+            "Stars": "⭐" * h["stars"],
+            "Rating": f"{h['rating']}/10",
+            "Price/Night": CurrencyEngine.format_price(h["base_price_usd"], currency_choice),
+            "Distance to Center (km)": f"{h['distance_center_km']} km",
+            "Distance to Airport (km)": f"{h['distance_airport_km']} km"
+        } for h in filtered_hotels])
+        st.dataframe(df_hotels_summary, use_container_width=True, hide_index=True)
+
+# ----------------- TAB 3: Room Selection & Instant Booking Voucher -----------------
+with tabs[2]:
+    st.markdown("### 🛏️ Room Customization & Instant Confirmation Voucher")
+
+    hotel_options = {h["name"]: h["id"] for h in HOTELS_DATABASE}
+    selected_hotel_name = st.selectbox("Select Hotel to Book:", list(hotel_options.keys()), index=0)
+    selected_hotel = HotelsManager.get_hotel_by_id(hotel_options[selected_hotel_name])
+
+    if selected_hotel:
+        room_types = selected_hotel.get("room_types", [])
+        room_names = [f"{r['name']} ({r['size_sqm']} m² | {r['bed']})" for r in room_types]
+        
+        b_c1, b_c2 = st.columns([1.3, 1])
+        with b_c1:
+            st.markdown(f"#### 🏨 Booking Details for **{selected_hotel['name']}**")
+            chosen_room_idx = st.selectbox("Select Room Category:", range(len(room_names)), format_func=lambda i: room_names[i])
+            num_rooms_choice = st.number_input("Number of Rooms:", min_value=1, max_value=5, value=1)
+
+            st.markdown("##### 👤 Lead Guest Information:")
+            guest_name = st.text_input("Full Name:", value="Khalil Al-Mansoor", placeholder="e.g. John Doe")
+            guest_email = st.text_input("Email Address:", value="khalil@example.com", placeholder="e.g. guest@email.com")
+            guest_phone = st.text_input("Phone Number:", value="+212 600 000 000", placeholder="+1 555 0199")
+            special_requests = st.text_area("Special Requests (Optional):", value="High floor room with landmark view, early check-in if possible.")
+
+        with b_c2:
+            st.markdown("#### 🧾 Live Itemized Price Quote")
+            quote = BookingEngine.calculate_stay_quote(
+                hotel=selected_hotel,
+                room_type_idx=chosen_room_idx,
+                checkin_date=checkin_date,
+                checkout_date=checkout_date,
+                num_rooms=num_rooms_choice,
+                currency_label=currency_choice
+            )
+
+            st.markdown(f"""
+            - **Nightly Room Rate:** `{quote['rate_per_night_formatted']}`
+            - **Length of Stay:** `{quote['num_nights']} nights` (x `{quote['num_rooms']} room(s)`)
+            - **Subtotal:** `{quote['subtotal_formatted']}`
+            - **VAT (10%) & Service Charge (3%):** `{CurrencyEngine.format_price(quote['vat_usd'] + quote['service_usd'], currency_choice)}`
+            - **Municipal City Tourism Tax:** `{CurrencyEngine.format_price(quote['city_tax_usd'], currency_choice)}`
+            <hr style="border-color:rgba(56, 189, 248, 0.3);">
+            <h3 style="color:#f59e0b; margin:0.3rem 0;">Total: {quote['grand_total_formatted']}</h3>
+            <p style="color:#10b981; font-size:0.85rem;">✅ Includes all mandatory taxes & tourism fees.</p>
+            """, unsafe_allow_html=True)
+
+            if st.button("🚀 Confirm Booking & Issue Digital Voucher", key="btn_confirm_book"):
+                voucher = BookingEngine.generate_booking_voucher(
+                    hotel=selected_hotel,
+                    quote=quote,
+                    guest_name=guest_name,
+                    guest_email=guest_email,
+                    guest_phone=guest_phone,
+                    special_requests=special_requests
+                )
+
+                st.success("🎉 **RESERVATION CONFIRMED & GUARANTEED!** Your official booking voucher is generated below:")
+                st.markdown(f"""
+                <div class="voucher-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h2>🎫 OFFICIAL HOTEL RESERVATION VOUCHER</h2>
+                        <span style="color:#10b981; font-weight:800; font-size:1.2rem;">{voucher['status']}</span>
+                    </div>
+                    <hr style="border-color:rgba(16, 185, 129, 0.4);">
+                    <p><b>🔖 Reservation Reference:</b> <span style="font-family:monospace; font-size:1.2rem; color:#38bdf8;">{voucher['booking_reference']}</span></p>
+                    <p><b>🏨 Property:</b> {voucher['hotel_name']} ({voucher['hotel_stars']})</p>
+                    <p><b>📍 Address:</b> {voucher['hotel_address']}</p>
+                    <p><b>👤 Lead Guest:</b> {voucher['guest_name']} | <b>Email:</b> {voucher['guest_email']} | <b>Phone:</b> {voucher['guest_phone']}</p>
+                    <p><b>🛏️ Room Type:</b> {voucher['room_type']}</p>
+                    <p><b>📅 Dates:</b> Check-in <b>{checkin_date} (from 15:00)</b> ➔ Check-out <b>{checkout_date} (until 12:00)</b> ({voucher['num_nights']} nights)</p>
+                    <p><b>💵 Total Amount Paid / Guaranteed:</b> <span style="font-weight:700; font-size:1.3rem; color:#f59e0b;">{voucher['grand_total_formatted']}</span></p>
+                    <p><b>🛡️ Policy:</b> {voucher['cancellation_policy']}</p>
+                    <p><b>📝 Special Requests:</b> <i>{voucher['special_requests']}</i></p>
+                </div>
+                """, unsafe_allow_html=True)
+
+# ----------------- TAB 4: Price Intelligence -----------------
+with tabs[3]:
+    st.markdown("### 📊 Price Intelligence, Best Season & Deal Predictor")
+    
+    p_hotel_name = st.selectbox("Select Hotel for Seasonal Price Analysis:", list(hotel_options.keys()), index=0, key="price_intel_hotel")
+    p_hotel = HotelsManager.get_hotel_by_id(hotel_options[p_hotel_name])
+
+    if p_hotel:
+        fig_season = create_seasonal_price_chart(p_hotel["seasonal_rates"], p_hotel["name"], currency_choice)
+        st.plotly_chart(fig_season, use_container_width=True)
+
+        low_rate = CurrencyEngine.format_price(p_hotel["seasonal_rates"]["Low_Season"], currency_choice)
+        high_rate = CurrencyEngine.format_price(p_hotel["seasonal_rates"]["High_Season"], currency_choice)
+        savings = p_hotel["seasonal_rates"]["High_Season"] - p_hotel["seasonal_rates"]["Low_Season"]
+        savings_formatted = CurrencyEngine.format_price(savings, currency_choice)
+
+        st.info(f"💡 **Booking Strategy Tip for {p_hotel['name']}:** Booking in the shoulder/low season can save you up to **{savings_formatted} per night** (Low season: {low_rate} vs Peak: {high_rate}).")
+
+# ----------------- TAB 5: Guest Reviews & Rating Analytics -----------------
+with tabs[4]:
+    st.markdown("### ⭐ Verified Guest Review Analytics & Satisfaction Pillars")
+    
+    r_hotel_name = st.selectbox("Select Hotel to View Guest Feedback:", list(hotel_options.keys()), index=0, key="review_intel_hotel")
+    r_hotel = HotelsManager.get_hotel_by_id(hotel_options[r_hotel_name])
+
+    if r_hotel:
+        r1, r2 = st.columns([1, 1.2])
+        with r1:
+            st.markdown(f"#### 🌟 Overall Score: **{r_hotel['rating']} / 10** ({r_hotel['rating_badge']})")
+            st.markdown(f"Based on **{r_hotel['review_count']:,} verified traveler reviews**.")
+            
+            for cat, score in r_hotel["sub_ratings"].items():
+                st.write(f"**{cat}** — `{score} / 10`")
+                st.progress(score / 10.0)
+
+        with r2:
+            fig_radar = create_guest_ratings_radar(r_hotel["sub_ratings"], r_hotel["name"])
+            st.plotly_chart(fig_radar, use_container_width=True)
