@@ -230,52 +230,49 @@ with tabs[0]:
             h_orig_formatted = CurrencyEngine.format_price(hotel["original_price_usd"], currency_choice)
             total_stay_price = CurrencyEngine.format_price(hotel["base_price_usd"] * num_nights, currency_choice)
 
-            # Image snippet with referrer policy to prevent hotlink blocking
-            img_html = ""
-            if hotel.get("image"):
-                img_html = f"""
-                <div style="flex: 0 0 250px; max-width: 260px; height: 165px; border-radius: 8px; overflow: hidden; background: #0f172a; margin-right: 1.2rem;">
-                    <img src="{hotel['image']}" referrerpolicy="no-referrer" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" alt="{hotel['name']}" onerror="this.style.display='none'" />
-                </div>
-                """
+            with st.container(border=True):
+                c_img, c_info, c_price = st.columns([1.2, 2.5, 1.1])
+                
+                with c_img:
+                    if hotel.get("image"):
+                        st.image(hotel["image"], use_container_width=True)
+                    else:
+                        st.markdown("🏨 *Photo not available*")
 
-            source_tag = ""
-            if hotel.get("source") == "Live Booking.com":
-                source_tag = '<span style="background:rgba(16,185,129,0.2); color:#10b981; border:1px solid #10b981; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; margin-left:0.5rem;">🟢 Live Booking.com</span>'
+                with c_info:
+                    stars_str = "⭐" * hotel.get("stars", 3)
+                    live_tag = " `🟢 Live Booking.com`" if hotel.get("source") == "Live Booking.com" else ""
+                    st.markdown(f"#### 🏨 {hotel['name']} {stars_str}{live_tag}")
+                    st.markdown(f"📍 **{hotel.get('address', hotel.get('city'))}** &bull; *{hotel.get('distance_center_km', 1.0)} km from city center*")
+                    
+                    # Rating score badge
+                    score_val = hotel.get('rating', 8.5)
+                    st.markdown(
+                        f"<span class='rating-badge'>{score_val}</span> "
+                        f"<span style='color:#38bdf8; font-weight:700; margin-left:6px;'>{hotel.get('rating_badge', 'Superb')}</span> "
+                        f"<span style='color:#94a3b8; font-size:0.85rem;'>({hotel.get('review_count', 100):,} verified guest reviews)</span>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    if hotel.get("amenities"):
+                        amenities_text = " • ".join(hotel.get("amenities")[:5])
+                        st.markdown(f"<p style='color:#cbd5e1; font-size:0.85rem; margin-top:6px;'>{amenities_text}</p>", unsafe_allow_html=True)
+                    
+                    if hotel.get("description"):
+                        desc_text = hotel.get("description", "")[:140]
+                        st.markdown(f"<p style='color:#94a3b8; font-size:0.82rem; font-style:italic;'>{desc_text}...</p>", unsafe_allow_html=True)
 
-            booking_link_html = ""
-            if hotel.get("booking_url"):
-                booking_link_html = f'<a href="{hotel["booking_url"]}" target="_blank" class="booking-btn">🔗 Reserve on Booking.com</a>'
+                with c_price:
+                    disc = hotel.get("discount_pct", 10)
+                    st.markdown(f"<span class='discount-badge'>-{disc}% Deal</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color:#94a3b8; text-decoration:line-through; font-size:0.85rem;'>{h_orig_formatted}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='price-tag'>{h_price_formatted}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='color:#94a3b8; font-size:0.8rem;'>per night &bull; {num_nights} nights: <b>{total_stay_price}</b></span>", unsafe_allow_html=True)
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    if hotel.get("booking_url"):
+                        st.link_button("🔗 Reserve on Booking.com", hotel["booking_url"], use_container_width=True)
 
-            st.markdown(f"""
-            <div class="hotel-card">
-                <div style="display:flex; flex-wrap:wrap; align-items:flex-start;">
-                    {img_html}
-                    <div style="flex:1; min-width:280px;">
-                        <h3 style="margin:0 0 0.2rem 0; color:#f8fafc;">🏨 {hotel['name']} {'⭐' * hotel.get('stars', 3)} {source_tag}</h3>
-                        <p style="color:#94a3b8; margin:0 0 0.5rem 0;">📍 {hotel.get('address', hotel.get('city'))} • <b>{hotel.get('distance_center_km', 1.0)} km</b> from city center</p>
-                        <div style="margin-bottom:0.6rem;">
-                            <span class="rating-badge">{hotel['rating']}</span>
-                            <span style="font-weight:700; color:#38bdf8; margin-left:0.5rem;">{hotel.get('rating_badge', 'Superb')}</span>
-                            <span style="color:#94a3b8; font-size:0.85rem;">({hotel.get('review_count', 100):,} verified guest reviews)</span>
-                        </div>
-                        <div style="color:#cbd5e1; font-size:0.85rem; margin-bottom:0.5rem;">
-                            {' • '.join(hotel.get('amenities', [])[:5])}
-                        </div>
-                        <p style="color:#94a3b8; font-size:0.85rem; font-style:italic; margin:0;">
-                            {hotel.get('description', '')[:140]}...
-                        </p>
-                    </div>
-                    <div style="text-align:right; min-width:180px; padding-left:1rem;">
-                        <span class="discount-badge">-{hotel.get('discount_pct', 10)}% Deal</span>
-                        <div style="color:#94a3b8; text-decoration:line-through; font-size:0.9rem; margin-top:0.3rem;">{h_orig_formatted}</div>
-                        <div class="price-tag">{h_price_formatted}</div>
-                        <div style="color:#94a3b8; font-size:0.8rem; margin-bottom:0.4rem;">per night • {num_nights} nights total: <b>{total_stay_price}</b></div>
-                        {booking_link_html}
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
 
 # ----------------- TAB 2: Interactive Map -----------------
 with tabs[1]:
