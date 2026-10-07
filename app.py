@@ -361,24 +361,23 @@ with tabs[2]:
                 )
 
                 st.success("🎉 **RESERVATION CONFIRMED & GUARANTEED!** Your official booking voucher is generated below:")
-                st.markdown(f"""
-                <div class="voucher-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h2>🎫 OFFICIAL HOTEL RESERVATION VOUCHER</h2>
-                        <span style="color:#10b981; font-weight:800; font-size:1.2rem;">{voucher['status']}</span>
-                    </div>
-                    <hr style="border-color:rgba(16, 185, 129, 0.4);">
-                    <p><b>🔖 Reservation Reference:</b> <span style="font-family:monospace; font-size:1.2rem; color:#38bdf8;">{voucher['booking_reference']}</span></p>
-                    <p><b>🏨 Property:</b> {voucher['hotel_name']} ({'⭐' * voucher.get('hotel_stars', 3)})</p>
-                    <p><b>📍 Address:</b> {voucher['hotel_address']}</p>
-                    <p><b>👤 Lead Guest:</b> {voucher['guest_name']} | <b>Email:</b> {voucher['guest_email']} | <b>Phone:</b> {voucher['guest_phone']}</p>
-                    <p><b>🛏️ Room Type:</b> {voucher['room_type']}</p>
-                    <p><b>📅 Dates:</b> Check-in <b>{checkin_date} (from 15:00)</b> ➔ Check-out <b>{checkout_date} (until 12:00)</b> ({voucher['num_nights']} nights)</p>
-                    <p><b>💵 Total Amount Paid / Guaranteed:</b> <span style="font-weight:700; font-size:1.3rem; color:#f59e0b;">{voucher['grand_total_formatted']}</span></p>
-                    <p><b>🛡️ Policy:</b> {voucher['cancellation_policy']}</p>
-                    <p><b>📝 Special Requests:</b> <i>{voucher['special_requests']}</i></p>
-                </div>
-                """, unsafe_allow_html=True)
+                with st.container(border=True):
+                    v_c1, v_c2 = st.columns([3, 1])
+                    with v_c1:
+                        st.subheader("🎫 OFFICIAL HOTEL RESERVATION VOUCHER")
+                    with v_c2:
+                        st.markdown(f"<span style='color:#10b981; font-weight:800; font-size:1.1rem;'>{voucher['status']}</span>", unsafe_allow_html=True)
+                    st.divider()
+                    st.markdown(f"**🔖 Reservation Reference:** `{voucher['booking_reference']}`")
+                    st.markdown(f"**🏨 Property:** **{voucher['hotel_name']}** ({'⭐' * voucher.get('hotel_stars', 3)})")
+                    st.markdown(f"**📍 Address:** {voucher['hotel_address']}")
+                    st.markdown(f"**👤 Lead Guest:** {voucher['guest_name']} &bull; **Email:** {voucher['guest_email']} &bull; **Phone:** {voucher['guest_phone']}")
+                    st.markdown(f"**🛏️ Room Type:** {voucher['room_type']}")
+                    st.markdown(f"**📅 Dates:** Check-in **{checkin_date}** (from 15:00) ➔ Check-out **{checkout_date}** (until 12:00) ({voucher['num_nights']} nights)")
+                    st.markdown(f"**💵 Total Amount Guaranteed:** <span style='font-weight:800; font-size:1.3rem; color:#f59e0b;'>{voucher['grand_total_formatted']}</span>", unsafe_allow_html=True)
+                    st.markdown(f"**🛡️ Policy:** {voucher['cancellation_policy']}")
+                    st.markdown(f"**📝 Special Requests:** *{voucher['special_requests']}*")
+
 
 # ----------------- TAB 4: Price Intelligence -----------------
 with tabs[3]:
